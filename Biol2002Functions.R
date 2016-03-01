@@ -477,7 +477,7 @@ PCOA <- function (beta_data, meta_data, cov){
     rownames(metadata.cov) <- metadata$SampleID
 
 	#Sets up colors
-    colorL <- rainbow(len(covs))
+    colorL <- rainbow(length(covs))
     colorV <- c()
     for(i in seq_len(NROW(metadata.cov[,1]))){
         for (j in 1:length(covs)){
