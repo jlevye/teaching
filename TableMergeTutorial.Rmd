@@ -1,0 +1,129 @@
+---
+title: "Alternate Plotting and Data Manipulation"
+author: "Jennifer Teshera-Levye"
+date: "03/02/2016"
+output: html_document
+---
+#Introduction
+In the tutorials you had last semester, you learned how to make a few different kinds of plots, using your different ways of analyzing your data. In this little tutorial, I will walk you through some more flexible ways of organizing your data and plotting with ggplot. 
+
+First, you'll need to load some packages. If you don't have one of these, you can use `install.packages()` to install it. 
+
+```{r, message=FALSE}
+library(ggplot2)
+library(plyr)
+library(beeswarm)
+```
+
+You'll also need some data files. I'm going to use the files we worked with in Biol 2002, which were a subset of the Human Microbiome Project data, but you should be able to follow along with your own data, as long as you keep track of variable names that are different. For this exercise, I'll focus on alpha diversity. The data file was produced using `alpha_diversity.py` in QIIME. 
+
+#First Steps
+##Loading and Organizing Our Data
+Remember to make sure you're in the same directory as your data. You can check using `getwd()` or `list.files()`, and you can change your directory with `setwd()`. We'll load our metadata, alpha diversity data generated in Qiime, and our OTU table, just in case. 
+
+```{r}
+metadata <- read.table("HMP_5BS_mapping.txt", sep = "\t", comment="", header=T, as.is=T)
+alpha <- read.table("alphadiv.txt", sep="\t", comment="",header=T)
+otu_table <- read.table("otu_table.txt", sep="\t", comment="", header=T, skip=1, as.is=T, check.names=F)
+```
+
+We should make sure the columns in our metadata are what we expect them to be. We can change them if they aren't. We can also see which diversity metrics we have, and make sure the first column in our alpha diversity table is labeled. 
+
+```{r}
+names(metadata)
+#Let's change X.SampleID to SampleID, and Description to BodyArea. 
+names(metadata)[1] <- "SampleID"
+names(metadata)[8] <- "BodyArea"
+
+names(alpha)
+#Again, let's make sure the sample IDs are labeled: 
+names(alpha)[1] <- "SampleID"
+```
+
+We can also get rid of columns we don't think we'll need in our metadata. Let's just keep SampleID, Sex, BodySite, and BodyArea: 
+```{r}
+metadata <- metadata[,c("SampleID","Sex","BodySite","BodyArea")]
+```
+
+##Merging Our Tables
+The easiest way to work with data in R is to have each row as a sample and each column some characteristic of that sample. We can merge our alpha diversity and metadata into one table. The function `merge()` takes two data frames and given a column, matches up the rows based on that option. There are a few different ways it handles data, but for this case we only need the most basic options.
+
+It's also helpful for categorical metadata to be set as the datatype "factor" instead of "character" or string, so we can adjust that here. 
+
+```{r}
+combined_data <- merge(alpha, metadata, by="SampleID")
+head(combined_data)
+
+combined_data$Sex <- as.factor(combined_data$Sex)
+combined_data$BodySite <- as.factor(combined_data$BodySite)
+combined_data$BodyArea <- as.factor(combined_data$BodyArea)
+```
+
+#Plotting Data with gglot
+Data that's set up this way is very easy to plot using a package called "ggplot". ggplot commands have a few basic parts. We can make box plots of one of our diversity metrics, plotted by body area and colored by sex, to look at the different parts. 
+
+```{r}
+ggplot(combined_data, aes(x = BodySite, y = shannon, fill = Sex)) + geom_boxplot() + labs(x = "Body Site", y = "Shannon Index", title = "Human Microbiome Diversity")
+```
+This command has three parts: 
+
+1. `ggplot(combined_data, aes(x = BodySite, y = shannon, fill = Sex))` : This is the main function call, and it sets the data table you're using, and what your variables and groups are. There are a couple of other ways to group data: color and group can both be assigned to covariates to help plot your data. 
+2. `geom_boxplot()` : This is the part of the function that actually draws the box plot. There are lots of different kinds of "geometry" that ggplot can use, and there are great references on line. 
+3. `labs(x = "Body Site", y = "Shannon Index", title = "Human Microbiome Diversity")` : This creates a title and axes labels, and is one of dozens of different options you can use to customize your plot. 
+
+Here's another example of a plot you can make. It's similar to the beeswarm plots from the original tutorial, though a little less neat. 
+
+```{r}
+ggplot(combined_data, aes(x = Sex, y = PD_whole_tree, color = BodyArea)) + geom_jitter(height=0, width = 0.25)
+```
+
+If you want more examples of things you can do wtih ggplot, check out the [documentation](http://docs.ggplot2.org/current/).
+
+##Odds and Ends
+###Anova
+You can also use data set up in this format for statistical tests like linear regression. Here's an example with ANOVA. Does phylogenetic distance vary significantly between body sites? 
+```{r}
+anova <- aov(PD_whole_tree ~ BodySite, data=combined_data)
+summary(anova)
+```
+
+###Beeswarm Plots
+If you liked the beeswarm plots from last semester's tutorials, here's how you can do them with this data. We have to make a vector for pointwise colors. There's a few ways we could do this - I'll show two examples. 
+```{r}
+#A simple way to assign colors if you only have a couple of options for a particular category. We'll assign color for Sex this way, since there are only two choices labeled. 
+colors <- rainbow(2)
+combined_data$SexColor <- ifelse(combined_data$Sex == "female", colors[1], colors[2])
+
+beeswarm(shannon~BodySite, data=combined_data, pwcol = SexColor, pch = 19, labels = c('LRC','MV','SAL','ST','SP'), xlab = "Body Site", ylab = "Shannon Index")
+
+#We can also convert factor data to numeric data, and use those numbers to pick colors from a list. Let's say we don't know how many body sites there are when we set up our colors. 
+colors2 <- rainbow(length(levels(combined_data$BodySite)))
+combined_data$SiteColor <- colors2[as.numeric(combined_data$BodySite)]
+
+beeswarm(shannon~Sex, data=combined_data, pwcol = SiteColor, pch = 19, xlab = "Sex", ylab = "Shannon Index")
+```
+
+#Aggregating and Subsetting Data
+##Working with Subsets
+What if we want to run a t-test comparing species diversity between sexes? We can do this quickly and easily by making subsets of our data. `subset()` is a command that takes two arguments. The first is the bigger set of data you want a subset of, and the second is a statement that can either be true or false. `subset()` returns the rows in the dataset for which that statement is true.
+```{r}
+male <- subset(combined_data, combined_data$Sex == "male")
+female <- subset(combined_data, combined_data$Sex == "female")
+t.test(male$observed_species, female$observed_species)
+```
+
+There are lots of different conditions you can use to subset your data. You can exclude characters (data$trait != value), limit them to within a range, or check to see if they are members of a set (using a function like `is.element()`). 
+
+##Making Summary Tables
+There are a few ways to make summary tables in R. My favorite is to use a function in a package called "plyr" - ddply. Let's make a table that shows the mean and standard deviation for shannon index and phylogenetic distance for each body site. `ddply()` has three basic parts: the data you're working with, the variable or variables you're aggregating by, and the function you're running. In our case we're using a function called "summarize", which is then followed by a list of things summarize will calculate. 
+
+```{r}
+summary_table <- ddply(combined_data, .(BodySite), summarize,
+                      shannonMean = mean(shannon),
+                      shannonSD = sd(shannon),
+                      pdMean = mean(PD_whole_tree),
+                      pdSD = sd(PD_whole_tree))
+summary_table
+```
+
+There are more complex ways we can manipulate our data, which can be particularly useful for working with your OTU table directly, but this gives you a basic idea. These same principles can be used with the beta diversity data output from qiime to make lots of different kinds of plots or different kinds of analyses. 
