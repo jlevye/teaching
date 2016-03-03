@@ -34,7 +34,7 @@ read.OTUTable <- function(filename){
 
 #Reading in a meta data table; again, superfluous but clearner
 read.metadata <- function(filename){
-	out <- tryCatch({read.table(filename, header=T, sep="\t", as.is=TRUE, check.names=F)},
+	out <- tryCatch({read.table(filename, header=T, sep="\t", as.is=TRUE, check.names=F, comment = "")},
 				error=function(cond){
 						message("You got an error message. Here's the original error: ")
 						message(cond)
@@ -59,20 +59,20 @@ alpha_organize <- function(alpha_data, meta_data, messages=T) {
 	if(is.data.frame(alpha_data)){
 		alpha <- alpha_data
 	} else if (is.character(alpha_data)) {
-		alpha <- read.table(alpha_data, sep = "\t", header = TRUE, as.is = TRUE)
+		alpha <- read.table(alpha_data, sep = "\t", header = TRUE, as.is = TRUE, comment="")
 	} else {
 		message("Alpha diversity of type not supported. Please use a file path or data frame and try again.")
 		return(NULL)
 	}
 
 	metrics <- names(alpha)[-1]
-	names(alpha)[1] <- SampleID
+	names(alpha)[1] <- "SampleID"
 
 	#Reads in or assigns metadata
 	if(is.data.frame(meta_data)){
 		metadata <- meta_data
 	} else if (is.character(meta_data)) {
-		metadata <- read.table(meta_data, sep = "\t", header = TRUE, as.is = TRUE)
+		metadata <- read.table(meta_data, sep = "\t", header = TRUE, as.is = TRUE, comment = "")
 	} else {
 		message("Meta data table of type not supported. Please use a file path or data frame and try again.")
 		return(NULL)
@@ -156,12 +156,13 @@ taxa_lev_sum <- function (otu_table, metadata_table, minpct=0, minind=1, cov, mi
 	if(is.data.frame(meta_data)){
 		metadata <- meta_data
 	} else if (is.character(meta_data)) {
-		metadata <- read.table(meta_data, sep = "\t", header = TRUE, as.is = TRUE)
+		metadata <- read.table(meta_data, sep = "\t", header = TRUE, as.is = TRUE, comment = "")
 	} else {
 		message("Meta data table of type not supported. Please use a file path or data frame and try again.")
 		return(NULL)
 	}
 
+	if(names(metadata)[1] != "SampleID") {names(metadata)[1] <- "SampleID"}
 	metadata$SampleID <- as.character(metadata$SampleID)
     metadata <- metadata[which(is.element(metadata$SampleID, colnames(otu.cut))),]
 	mm <- match(colnames(otu.cut)[2:ncol(otu.cut)], as.character(metadata$SampleID))
@@ -299,7 +300,7 @@ ALPHA_cov = function (alpha_data, meta_data, Metric="PD_whole_tree", cov1, cov2=
 	if(is.data.frame(alpha_data)){
 		alpha <- alpha_data
 	} else if (is.character(alpha_data)) {
-		alpha <- read.table(alpha_data, sep = "\t", header = TRUE, as.is = TRUE)
+		alpha <- read.table(alpha_data, sep = "\t", header = TRUE, as.is = TRUE, comment = "")
 	} else {
 		message("Alpha diversity of type not supported. Please use a file path or data frame and try again.")
 		return(NULL)
@@ -322,14 +323,15 @@ ALPHA_cov = function (alpha_data, meta_data, Metric="PD_whole_tree", cov1, cov2=
 	if(is.data.frame(meta_data)){
 		metadata <- meta_data
 	} else if (is.character(meta_data)) {
-		metadata <- read.table(meta_data, sep = "\t", header = TRUE, as.is = TRUE)
+		metadata <- read.table(meta_data, sep = "\t", header = TRUE, as.is = TRUE, comment = "")
 	} else {
 		message("Meta data table of type not supported. Please use a file path or data frame and try again.")
 		return(NULL)
 	}
 
+	  if(names(metadata)[1] != "SampleID") {names(metadata)[1] <- "SampleID"}
     #Subsets data to match correct samples and puts in order
-	metadata <- metadata[as.character(metadata$SampleID) %in% rownames(alpha),]
+	  metadata <- metadata[as.character(metadata$SampleID) %in% rownames(alpha),]
     mm <- match(rownames(alpha), as.character(metadata$SampleID))
     metadata <- metadata[mm,]
 
@@ -439,7 +441,7 @@ PCOA <- function (beta_data, meta_data, cov){
 	if (is.data.frame(beta_data)){
 		beta <- beta_data
 	} else if (is.character(beta_data)) {
-		beta <- read.table(beta_data, sep='\t', , header=T, as.is=TRUE, check.names=F)
+		beta <- read.table(beta_data, sep='\t', header=T, as.is=TRUE, check.names=F, comment = "")
 	} else {
 		message("Beta diversity data is wrong format - please use a dataframe or a file name/path.")
 		return(NULL)}
@@ -466,6 +468,7 @@ PCOA <- function (beta_data, meta_data, cov){
     rownames(PCOA) <- IDs
 
 	#Puts rows of metadata file in same order as PCOA matrix
+  	if(names(metadata)[1] != "SampleID") {names(metadata)[1] <- "SampleID"}
     metadata = metadata[as.character(metadata$SampleID) %in% rownames(PCOA),]
     mm = match(rownames(PCOA), as.character(metadata$SampleID))
     metadata = metadata[mm,]
@@ -498,7 +501,7 @@ BETA_cov <- function (beta_data, meta_data, cov, output=F){
 	if (is.data.frame(beta_data)){
 		beta <- beta_data
 	} else if (is.character(beta_data)) {
-		beta <- read.table(beta_data, sep='\t', , header=T, as.is=TRUE, check.names=F)
+		beta <- read.table(beta_data, sep='\t', header=T, as.is=TRUE, check.names=F, comment = "")
 	} else {
 		message("Beta diversity data is wrong format - please use a dataframe or a file name/path.")
 		return(NULL)}
@@ -515,6 +518,7 @@ BETA_cov <- function (beta_data, meta_data, cov, output=F){
     beta.m <- as.matrix(beta[,-1], dimnames = list(IDs, IDs))
 
 	#Data cleanup to match up with metadata file
+	  if(names(metadata)[1] != "SampleID") {names(metadata)[1] <- "SampleID"}
     beta.m[lower.tri(beta.m, diag=F)] <- NA
     metadata <- metadata[as.character(metadata$SampleID) %in% rownames(beta.m),]
     mm <- match(rownames(beta.m), as.character(metadata$SampleID))
