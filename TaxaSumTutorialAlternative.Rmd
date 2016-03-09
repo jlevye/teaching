@@ -1,0 +1,161 @@
+---
+title: "Taxa Summary Plots in ggplot"
+author: "Jennifer Teshera-Levye"
+date: "03/09/2016"
+output: html_document
+---
+
+#Introduction
+The `taxa_lev_sum()` function is a bit buggy and not super flexible, in part because of how it arranges the data. We can do some manipulation of our OTU tables to get a similar result, with a little more control. 
+
+##Reading in our data
+First thing is to read in our OTU table and metadata file. Make sure you are in the right working directory! We can also drop the first column of our OTU table, since the info is redundant. 
+
+```{r}
+metadata <- read.table("TutorialDataFiles/HMP_5BS_mapping.txt", sep = "\t", comment="", header=T, as.is=T)
+otu_table <- read.table("TutorialDataFiles/otu_table.txt", sep="\t", comment="", header=T, skip=1, as.is=T, check.names=F)
+otu <- otu_table[,-1]
+```
+
+#Organizing our OTU table
+We want to set a taxa level by number - 1 = kingdom, 2 = phylum, etc down to 7 = species. Let's work with phylum. Then we do some string parsing to replace the full taxonomy label with the appropriate level. 
+
+```{r}
+level = 2
+
+#First we make an array for our new names, and a list of the current otu names.  
+names_split <- array(dim=c(length(otu$taxonomy), level))
+otu_names <- as.character(otu$taxonomy)
+
+#Then we run through each name and split based on the level we are interested in. 
+for (i in 1:length(otu_names)){
+    names_split[i,] <- head(strsplit(otu_names[i], "; ", fixed=T)[[1]], n=level)
+}
+
+otu_names <- apply(names_split, 1, function(x) paste(x[1:level], sep = "", collapse = ";"))
+otu$taxonomy <- otu_names
+```
+
+Now we want to consolidate our OTU table by the taxa levels we've set, using a function called `aggregate()`. 
+
+```{r}
+samples <- ncol(otu) - 1
+otu <- aggregate(otu[,1:samples], by=list(otu$taxonomy), FUN = sum)
+names(otu)[1] <- "taxonomy"
+
+#We can see that the consolidating worked by checking how many rows we now have - that's how many phyla there are. 
+nrow(otu)
+```
+
+In order to make our OTU table and results more easily compatible with our metadata, we want the sample IDs as the rows and the taxa as the columns. This will take a couple of steps. First we want to set our taxonomy column as the row names instead of a data column. Then we'll use the function `t()` to transpose the data frame. We can then make a column SampleID that will be useful later. 
+
+```{r}
+rownames(otu) <- otu$taxonomy
+otu <- otu[, !(names(otu) %in% c("taxonomy"))]
+otu <- data.frame(t(otu))
+
+otu$SampleID <- rownames(otu)
+```
+
+#Calculating relative abundances
+Now we can convert raw values to relative abundance - we'll take each column and divide it by the row sums and multiply by 100, to get the percent abundance. Then we'll use a function called `melt()` from the library `reshape2` to convert our data frame into three columns: ones that has the sample ID, one that has a taxa, and one that has the relative abundance of that taxa in our sample. We'll also use the package `plyr` for it's function `ddply()` to aggregate our data nicely. We can also get rid of rows where the relative abundance is 0, to set up for a possible filtering step. 
+
+```{r}
+#Let's save a copy of our OTU table at this point, in case we want to change how we filter or organize things. 
+otu_backup <- otu
+
+#In this data frame, our sample IDs are in the last row. You can check where yours are when you set up iterating through columns. 
+N <- ncol(otu) -1
+total <- rowSums(otu[,1:N])
+for (i in 1:N){
+  otu[,i] <- (otu[,i]/total)*100
+}
+
+library(reshape2) #You'll want to install this package if you don't already have it. 
+library(plyr) #Same as above
+otu <- melt(otu, id.vars = "SampleID", variable.name = "Taxa", value.name = "RelativeAbundance")
+
+#Filtering 
+#We can set some cut-off values - mine are currently set at min. abundance is greater than 0% and minimum number of individuals is 1 - you can increase these as you want. 
+minAbund <- 0
+minFreq <- 1
+otu <- subset(otu, otu$RelativeAbundance>minAbund) 
+
+otuCount <- ddply(otu, .(Taxa), summarize, Occurances = length(Taxa))
+keep <- subset(otuCount, otuCount$Occurances >= minFreq)
+otu <- otu[which(is.element(otu$Taxa, keep$Taxa)),]
+```
+
+#Plotting
+Now we have a filtered table with three columns with which we can make a basic taxa summary plot (just grouped by sample ID). We'll use ggplot: 
+```{r}
+library(ggplot2)
+ggplot(otu, aes(x = SampleID, y = RelativeAbundance, fill= Taxa)) + geom_bar(stat = "identity") + scale_x_discrete(labels = NULL)
+```
+
+#Adding Metadata
+But what if we want to plot by some covariate? The easiest way to do that is to simply add our metatadata values to our table. More columns means more potential variables to plot by. This, however, changes our relative abundances - they won't add up to 100 anymore. Let's go back to our older otu table and melt it and filter out 0s without converting to relative abundance. 
+
+```{r}
+otu <- otu_backup
+otu <- melt(otu, id.vars = "SampleID", variable.name = "Taxa", value.name = "Count")
+otu <- subset(otu, otu$Count > 0)
+```
+
+Now we can add in our metadata, using the function `merge()`. First let's make sure we have the covariates/header names we think we do, and we can rename any that aren't right, and only keep the ones we're interested in. If you're looking at real metadata, you'll have a much longer list than the tutorial files. 
+```{r}
+names(metadata)
+
+#In this dataset, the first column is X.SampleID, instead of SampleID. I'll want to change that. I only want to keep "Sex", "BodySite", and "Description", which I'll rename "BodyArea". You should organize your data however you'd like. 
+
+names(metadata)[1] <- "SampleID"
+names(metadata)[8] <- "BodyArea"
+metadata <- metadata[,c("SampleID","Sex","BodySite","BodyArea")]
+
+#Here's what our metadata file looks like now: 
+head(metadata)
+
+#Now we match covariates to sample ids: 
+otu <- merge(otu, metadata, by="SampleID")
+head(otu)
+```
+
+We can do two things to plot relative abundances. We could either aggregate our data frame by a particular covariate, which is a little tricky, or we could use some options ggplot provides to produce relative abundances in our plots directly. I'll show both. 
+
+```{r}
+#Making a new table
+sex <- ddply(otu, .(Taxa,Sex), summarize, Count = sum(Count))
+totals <- ddply(otu, .(Sex), summarize, Total = sum(Count))
+sex <- merge(sex, totals, by="Sex")
+sex$RelativeAbundance <- sex$Count/sex$Total * 100
+
+ggplot(sex, aes(x = Sex, y = RelativeAbundance, fill=Taxa)) + geom_bar(stat="identity")
+
+#Changing ggplot parameters
+ggplot(otu[order(otu$Taxa),], aes(x = BodySite, y = Count, fill = Taxa)) + geom_bar(stat ="identity", position="fill")
+
+#We can even split our data up by sex using this method, using an option called facet_grid(): 
+ggplot(otu[order(otu$Taxa),], aes(x = BodySite, y = Count, fill = Taxa)) + geom_bar(stat ="identity", position="fill") + facet_grid(.~Sex) + scale_x_discrete(labels=c("LRC", "MV", "Sal.","Stool","SGP"))
+```
+
+Ordering the data when plotting makes sure that the same taxa are all grouped together; you will get the same actual results otherwise, but it is difficult to read. 
+
+#Filtering Taxa
+This gives you slightly different plots than the tutorial from Biol 2002 - the one thing missing is filtering by specific taxa. For that, we can use the aggregated relative abundance table (`sex` in the example above) and pull out a subset of the taxa we're specifically interested in. You'll need the exact taxa labels from the table to match. Say we want to look at Firmicutes and Actinobacteria: 
+
+```{r}
+#If we don't remember the spelling, we can print all the taxa and copy and paste: 
+unique(otu$Taxa)
+
+taxaList <- c("k__Bacteria.p__Bacteroidetes", "k__Bacteria.p__Actinobacteria")
+filtered <- subset(sex, is.element(sex$Taxa, taxaList))
+filtered
+```
+
+We plot things the same, making sure *not* to use the option `position="fill"`, since our abundances now should not add up to 100. Let's make our labels a little nicer, as well. 
+
+```{r}
+ggplot(filtered, aes(x = Sex, y = RelativeAbundance, fill=Taxa)) + geom_bar(stat="identity") + labs(y = "Relative Abundance") + scale_fill_discrete(labels = c("Actinobacteria", "Bacteroidetes")) + scale_x_discrete(labels = c("Female", "Male"))
+```
+
+That's it! All of this code should be adaptable all your data sets and any covariates. 
