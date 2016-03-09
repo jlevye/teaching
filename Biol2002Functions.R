@@ -101,7 +101,7 @@ alpha_organize <- function(alpha_data, meta_data, messages=T) {
 #Changes made: simplified taxa level assignment code
 #Now takes data frames instead of file names
 #Eliminated redundant copies, more logical variable names
-taxa_lev_sum <- function (otu_table, metadata_table, minpct=0, minind=1, cov, mincovpct=0, output=F, taxa=F, TL){
+taxa_lev_sum <- function (otu_table, meta_data, minpct=0, minind=1, cov, mincovpct=0, output=F, taxa=F, TL){
 	#Sets up assigment of taxa names to numeric value
 	taxaLevels <- c(1:7)
 	names(taxaLevels) <- c("kingdom", "phylum", "class", "order", "family", "genus","species")
