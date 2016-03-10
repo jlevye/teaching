@@ -1,0 +1,206 @@
+---
+title: "Jen's Guide to Troubleshooting"
+author: "Jennifer Teshera-Levye"
+date: "03/09/2016"
+output: html_document
+---
+
+#Introduction
+The hardest part of coding is figuring out what's going wrong when your code doesn't work. This is because, as awesome as computers are, they can be really dumb. A computer needs to be able to run through the exact steps it's told to - if something unexpected happens, it can't change its mind or do something else like you can. The key to debugging is breaking what you're trying to do into smallest possible chunks so you can find exactly where something's gone wrong. 
+
+This document is long, so don't try to go through it all at once. You can jump to the specific sections you think might be relevant to your problem, or skim through until you find something helpful. It's also not definitive, which is why there are a bunch of links to other resources at the end. 
+
+#Shortcuts
+1. [Common Mistakes](#common)
+2. [Data problems](#data)
+3. [Digging through code](#code)
+4. [Helpful resources](#resources)
+
+<a id="common"></a>
+
+#Easy Things to Check
+
+##Spelling mistakes, typos, and picky typographical details
+First thing to look for are spelling mistakes, obvious typos, and other minor syntax errors. Remember that most programming languages are *case-sensitive*, meaning capitol and lower case letters are totally different symbols. (A computer converts all of the symbols you type into ASCII character codes, where each letter is a number - these numbers can get converted into binary [1s and 0s], which is how the hardware actually deals with stuff. The letter "A" is assigned to number 65, while "a" is 97, at least on one encoding!)  
+
+Check if your variables are missing periods or underscores (same thing with function calls). Make sure you're not swapping "1"s for "l"s or "0"s for "o"s or "O"s.  If you are copying code from a rich-text editor or a word processing program, one almost-impossible-to-notice source of error is that sometimes dashes do odd things: 
+
+* There are normal dashes: -
+* There are ever-so-slightly longer dashes, called "en-dashes": &ndash;
+* There are even longer dashes, called "em-dashes": &mdash;
+
+Command line systems (say, on MSI), can't parse en-dashes or em-dashes - to a computer, they are totally different characters, so that, say *-m* and *&mdash;m* are parsed as totally different options and the latter throws an error. 
+
+##Closed parentheses and similar syntax mistakes
+I would guess that in complicated code, the single biggest source of errors you'll hit are mis-matched brackets, paretheses, or quotes. You'll know you've hit one of these when you get something like an "unexpected character" error - R thinks it's in one function when you've moved on to another. 
+
+If you're using an IDE like RStudio or a full-feature text editor (Notepad++, TextWrangler, Atom, etc etc etc), there's a helpful feature - bracket highlighting. If you put your cursor after a parenthesis, quotation mark, bracket, etc, the program will highlight the one that matches. If the wrong one matches, or you're 
+
+Also be careful that you're using quotes for strings, and you're putting things like commas *outside* those quote. See the difference in output if you forget?
+
+```{r}
+a <- c("a", "b","c")
+b <- c("a, b, c")
+a
+b
+length(a)
+length(b)
+```
+
+##Are you programing in the right language?
+In Biol2002/3004, this won't really come into play, since you're pretty much only using R. Once you start to use more than one programming language, though, things can get tricky. Rules for indentation, brackets, or new lines are really different. Lots of languages have some basic built-in functions with totally different names: in Python, to find the length of a vector, the function is called `len()`, but in R, it's `length()`. 
+
+If you aren't sure you have the right name for a function, just check it with `?function`. If the function doesn't exist, you'll get an error - try something else, or hit Google to figure out what function you do want. 
+
+```{r, error=TRUE, message=T, warning=T}
+?len
+```
+
+##Are you where you should be?
+This should be a somewhat familar error: 
+```{r, error=TRUE, message=TRUE}
+read.table("missing_otu_table.txt", header=T, sep="\t",comment="",skip=1,as.is=T)
+```
+
+This means R can't find the file you're looking for. You could have spelled it wrong, which is the first thing to check. You also might not be where you think you are, or the file might not be. To check the former, use `getwd()`, and if you're in the wrong place, `setwd()` to fix it. If you're in the right place and stil get the error, try `list.files()` to see if the file you want is actually there. If not, outside of R (using, say, Windows Explorer or Finder), locate it and put it where you want to go. Easy!
+
+<a id="data"></a>
+
+#Data Errors
+Data files, like many things in life, are not always as they seem. They can be idiosyncratically named, strangely organized, or full of missing values. Luckily, R provides a lot of tools for working with your data tables. Once you've got your file name spelled correctly and in the right folder, here's some questions to ask yourself as you load it in and start to work with it. 
+
+##What kind of file is it?
+In Biol2002/3004, we primarily have been using the `read.table()` function to read in `.txt` files, but this isn't the only function available. If your data is a CSV ("comma seperated value", though the seperator need not actually be a comma), `read.csv()` tailors the options of `read.table()`. You can still change most of them, as I'll show below. If you're using an Excel file, your best bet is to just save it as a CSV file instead. If you'd like to use Excel files directly, you can install a package called `xlsx` and use one of those functions - documentation is available [on the CRAN website](https://cran.r-project.org/web/packages/xlsx/xlsx.pdf). 
+
+##How is it formatted? (IE, what options should I use?)
+Some considerations: 
+
+* Is the first row of the file a header? 
+    + If yes, use option `header=TRUE`. This is the default for `read.csv` but not for `read.table`. 
+    + If not, R will create generic column names ("V1", "V2", etc), and you should change them later. 
+* How is the file delimited? In other words, what seperates the columns from each other? These can be tabs, spaces, commas, semicolons, etc - any character can be a separator. 
+    + The default for `read.csv` is `sep=","`, which makes sense for a comma separated value file, but it can be changed to anything.  
+    + `read.table` defaults to `sep=""`, meaning any number of spaces or tabs. This can cause an error if there are spaces in header names, because each is put into it's own column with no data to fill in. We'll usually actually want to use `sep="\t"` - a tab, instead of a space. 
+*Does the data start with a hashtag (#), or another odd character? 
+    + If a hashtag, without more information, R will consider that line a comment, and ignore it. in any read.table function, you can add the option `comment=""` to change this behavior. 
+    + Non-alphanumeric characters in column names can produce unexpected behavior - for example "#SampleID" might get changed to "X.SampleID". This is something we can fix easily, and we'll talk about in the next section. 
+* Are there rows with notes or other comments instead of data at the beginning of the file? 
+    + `skip = n` lets you skip the first *n* rows. 
+
+If there's something else, or you aren't sure, one option is to open your data file in a spreadsheet program like Excel, or a plaintext editor, where you can actually see what's going on. You can make the changes you need to the file in a GUI editor- just make sure you save or export it in a way you can still work with it, like a CSV file!
+
+##Is the data itself what you expect? 
+Don't try to look at your whole table at once in R - that's too much information to parse. Say you read a table into a variable called `data`. Here's some ways to see what's going on: 
+
+* `names(data)`: Gives you the column names of your data frame. Not what you expect? Change them: 
+    + If just, say, the first name is wrong: `names(data)[1] <- "NewName"`
+    + If you want to rename everything: `names(data) <- c("a","b","c")`
+* `str(data)`: Gives some basic descriptions of what's in the table, including the column names, the variable type (ie, numeric, character, factor) for each column, and the total number of observations. If a column is the wrong type, there's a category of functions called `as.<type>` that let you go from one type to another. For example: 
+    + `str(data)` tells you the values of column `a` are characters, but they should be numbers. Use: `data$a <- as.numeric(data$a)`
+    + It also tells you that column `b` is a factor with 4 levels, but you think it should only have 3. You can use `levels(data$b)` to see what the extra one is - maybe one entry was spelled wrong. You can correct it in a spreadsheet program, by hand in R using `data <- edit(data)`, or any number of other ways of finding and correcting the problem. 
+* `head(data)`: Prints the first 6 lines of data. Can be useful to make sure the data frame is set up like you think it is. 
+* `nrow(data)` or `ncol(data)`: Are there the right number of entries? 
+* `which(data$a == value)`: `which()` returns the indices of rows where some value is true. It can be used to find odd data, missing values, or to check if some target value is actually present.  
+
+##Are you missing values? 
+R stores missing values in a few ways. The most common kind of missing value is `NA`, and this one can cause a number of errors in your code. There are a few ways to handle `NA` values: 
+
+1. Remove any row where they appear: `data <- na.omit(data)` will delete every row which contains an `NA` in any column. 
+2. Remove rows if there are `NA` values in certain columns: `data <- subset(data, is.na(data$a) == FALSE)` will remove the rows where `data$a = NA`, but keep `NA` values in other columns. 
+3. Remove them only when certain functions are used: Some mathematical functions fail on `NA` values, so they provide an option to exclude them from the data for that particular function call only. The option you'll want is usually `na.rm = TRUE`, and is available for common functions like `mean()`, `sum()`, and `sd()`. 
+
+How to chose which you want? Rows with`NA` values in key identifying data like sample IDs should always be removed early on in data processing. Beyond that, it's up to you to figure out what works best for the functions you're using. 
+
+##Epic failures
+You've got a data set. Or you think you do, but none of your code is working. How big is it? `ncol(data)` tells you 0. Huh. You enter just `data` to see it, and get something like `NULL` or `character(0)` or a list of headings with no values. Something's happened, and your data is empty. The thing to do here is to try loading the file in again, making sure you're using the right options for the formatting. You might have to restore from a back-up, if you change something and corrupted the file. You do have back-ups, right? 
+
+<a id="code"></a>
+
+#What does your code actually do? 
+You're working off of someone else's code - someone (perhaps your TA?) helpfully packaged a bunch of long functions into one file, so you can just source it and run what you need. That someone, however, made a lot of mistakes. Or tested out their functions with a really limited data set. Now you're getting errors that make no sense, and a mysterious black box of code staring back at your screen. What do you do? 
+
+##Line by line debugging
+The only way to fix things is to carefully is to go line by line or chunk by chunk through your code. For example, normally you would call a function like: 
+
+```{r, eval=FALSE}
+output <- taxa_lev_sum("otu_table.txt", "mapping.txt", cov="BodySite", TL = "phylum")
+```
+
+But it isn't working. Your data is fine, your files are fine, no typos, and you don't understand where the error is coming from. To fix it, we need to look inside the function itself. 
+
+When you open the source code, it will look something like this: 
+
+```{r, eval=FALSE}
+taxa_lev_sum <- function (otu_table, meta_data, minpct=0, minind=1, cov, mincovpct=0, output=F, taxa=F, TL){
+  #Sets up assigment of taxa names to numeric value
+	taxaLevels <- c(1:7)
+	names(taxaLevels) <- c("kingdom", "phylum", "class", "order", "family", "genus","species")
+	if(is.element(TL, names(taxaLevels))){
+		level <- taxaLevels[[TL]]
+	} else{
+		message("Invalid taxa level. Options are kingdom, phylum, class, order, family, genus, species.")
+		return(NULL)}
+  
+  #...
+  
+    return(list(RBcolors = RBcolors,
+                taxa_cov = cov_otu.cut,
+                taxa_names = names.end,
+                cov_names = cov_lev))
+}
+```
+
+You'll want to start running the code, line by line (either copy/paste to the console or use Ctrl+Enter to run them from source), starting with the first line *after* the function call. But first, see all the variables listed after the word `function`? Those get assigned values when we call the function the normal way, and they're all deleted/lost as soon as the function ends. We need them in our environment, so we can assign them all values first, then start running the function line by line. So your console would look something like this: 
+
+```{r, eval = FALSE}
+otu_table <- "otu.txt"
+meta_data <- "mapping.txt"
+minpct <- 0
+minind <- 1
+cov <- "BodySite"
+mincovpct <- 0
+output <- F
+taxa <- F
+TL <- "phylum"
+
+#Now we start running the code
+taxaLevels <- c(1:7)
+names(taxaLevels) <- c("kingdom", "phylum", "class", "order", "family", "genus","species")
+#. . . 
+```
+
+As you go along, pause to see if the intermediate steps, like making new vectors or data frames, have the output you think they will, using some of the [commands to help work with data](#data). Eventually, you'll either hit an error (which will let you pinpoint the exact line the error comes from to fix), or you'll inexplicably get the output you wanted, at which point you can move on. All of the tips from the rest of this tutorial will help you identify your errors, as will the resources below. 
+
+##A couple of specialized cases - loops and conditionals
+If you have a `for()` or `while()` loop in your code, you might need do do a little more work to check it. One easy option is to add in `print()` or `echo()` statements to see if the code is doing what you think it will. You can also try a single case if you're iterating through `i in 1:N`, set `i = 2` and see if the code inside the loop works. 
+
+There are two risks with `while()` loops. The first will be obvious - if the condition the loop ends on will *never* happen, your code will just run infinitely until you either run out of memory or kill it (hit Esc or Ctrl+C). The second is if it hits that condition immediately, so the loop never runs at all. 
+
+If conditionals, like `if ... else` statements, are causing issues, check to make sure the `if` statement is checking what you think it will. Remember that to check for equality, use `==`, not just one! But if you think something is happening because `a` should equal `b`, but it's not, try some simple error checking: 
+
+```{r, echo=FALSE}
+a <- 1
+b <- "one"
+```
+```{r}
+a == b
+a
+b
+```
+
+Oh, oops. This tells you what your error is, now look back to the last places `a` and `b` were assigned values, and see what's going wrong. 
+
+<a id="resources"></a>
+
+#Some helpful resources
+This tutorial only scratches the surface of some of the tools available for debugging and some of the errors you might run into. Ultimately, Google (or, like, Bing, I guess) is your friend as you start to learn to program. Other particularly helpful resources: 
+
+* [Stack Exchange](http://stackexchange.com/), particularly [Stack Overflow](http://stackoverflow.com/), are two of the best sources for questions and answers for programming questions. There's a very good chance your question has been asked and answered before. If not, be brave and post your own questions!
+* [R-bloggers](http://www.r-bloggers.com/) hosts hundreds of articles, how-tos, and tutorials pulled from across lots of cites. [Quick-R](http://www.statmethods.net/) is a similarly comprehensive tutorial/reference site. 
+* For quick reference, you can't beat RStudio's page of [cheatsheets](https://www.rstudio.com/resources/cheatsheets/).
+* [R Cookbook](http://www.cookbook-r.com/) is the website for one of the best reference books. 
+* Finally, the [R documentation](https://cran.r-project.org/manuals.html) can be tough to parse but is the absolute most comprehensive for any function or package, and frequently has good examples you can try out. 
+
+As always, I'm happy to answer questions, especially after you've tried some debugging steps like these on your own. A second pair of eyes can spot that typo or stray bracket that you've been missing every time. 
+
+If all else fails, take a break and step away from the computer for a while. Or at least away from RStudio. Remember that the internet can offer you thousands of pictures of [kittens falling asleep](https://www.google.com/search?site=&tbm=isch&source=hp&biw=1366&bih=705&q=kittens+falling+asleep&btnG=Search+by+image&oq=marc+chagall&gs_l=img.3..0l10.749.3598.0.3858.12.9.0.3.3.0.54.351.8.8.0...0.0...1ac.1.11.img.oukzwzEEt14&gws_rd=ssl) and take advantage of that, then jump back in with fresh eyes. 
