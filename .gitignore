@@ -1,0 +1,9 @@
+#Files to exclude from teaching tutorials
+
+#Incomplete files or drafts
+betaPCOA_alt.r
+Beta_PCOA_ggplot.r
+
+#Assorted Utility files
+.Rhistory
+

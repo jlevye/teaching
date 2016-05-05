@@ -1,0 +1,254 @@
+---
+title: "Alternate ANOVA Tutorial"
+author: "Jennifer Teshera-Levye"
+date: "04/06/2016"
+output: html_document
+---
+
+Here's an alternate way of working with your OTU table to find taxa which are significantly different among groups with ANOVA. The alterations from last semester's code include: a code block to sort by taxa level, transposing the matrix to organize the data a bit differently, and some alternate plotting. The gist of the code is the same. 
+
+##Libraries and data
+
+To start: required packages and data files. Make sure you install anything you don't already have, and set your working directory as appropriate. 
+
+```{r}
+library(plyr)
+library(reshape2)
+library(lme4)
+library(car)
+library(ggplot2)
+
+setwd("~/Documents/School/GradSchool/Teaching/Biol3004Spring2016/Code/teaching/TutorialDataFiles/")
+otu <- read.table("otu_table.txt", sep = "\t", comment = "", header = T, skip = 1, as.is = T, check.names=F)
+metadata <- read.table("HMP_5BS_mapping.txt", sep = "\t", comment = "", header = T)
+```
+
+There's also a couplpe of useful cleanup steps: 
+
+```{r}
+#Get rid of the "#OTU ID" column in our otu table
+otu <- otu[,-1]
+
+#Rename sample ID column
+names(metadata)[1] <- "SampleID"
+#Make sure sample IDs are characters instead of numbers
+metadata$SampleID <- as.character(metadata$SampleID)
+sampleIDs <- metadata$SampleID #just in case we need them later
+#Grab only the metadata we actually care about
+metadata <- metadata[,c("SampleID", "BodySite", "Description","Sex")]
+```
+
+##Setting a taxa level
+
+Let's consolidate our OTU table data by the taxa level we care about. Remember, 1 = kingdom, 2 = phylum, 3 = class, 4 = order, 5 = family, 6 = genus, 7 = species. This example will use phylum because the numbers are small and easier to work with - you should use what's appropriate for your data. 
+
+```{r}
+level = 2
+
+#First we make an array for our new names, and a list of the current otu names.  
+names_split <- array(dim=c(length(otu$taxonomy), level))
+otu_names <- as.character(otu$taxonomy)
+
+#Then we run through each name and split based on the level we are interested in. 
+for (i in 1:length(otu_names)){
+    names_split[i,] <- head(strsplit(otu_names[i], "; ", fixed=T)[[1]], n=level)
+}
+
+otu_names <- apply(names_split, 1, function(x) paste(x[1:level], sep = "", collapse = ";"))
+otu$taxonomy <- otu_names
+
+samples <- ncol(otu) - 1
+otu <- aggregate(otu[,1:samples], by=list(otu$taxonomy), FUN = sum)
+names(otu)[1] <- "taxonomy"
+```
+
+This takes care of the data de-duplication step in the original ANOVA tutorial. 
+
+##Transposing the matrix and calculating relative abunadnce
+
+Now we can transpose our data frame to put it in a helpful format for working with our metadata, and convert to relative abundance per sample. The details about these steps can be found in the alternate taxa summary tutorial. Because we're not plotting all the taxa, we skip the "melt" step in that tutorial. 
+
+```{r}
+rownames(otu) <- otu$taxonomy
+otu <- otu[, !(names(otu) %in% c("taxonomy"))] #Grab all the columns but taxonomy
+otu <- data.frame(t(otu))
+
+otu$SampleID <- as.character(rownames(otu)) #Just in case they wind up numeric! 
+
+#In this data frame, our sample IDs are in the last column. You can check where yours are before you set up iterating through columns. 
+N <- ncol(otu) -1
+total <- rowSums(otu[,1:N])
+for (i in 1:N){
+  otu[,i] <- (otu[,i]/total)*100
+}
+```
+
+#Filtering and normalization
+
+Now we have a data frame where rows are sample IDs and columns are taxa, with values as relative abundance. We can filter out rare taxa, and then normalize our data, as in the original ANOVA function. 
+
+
+```{r}
+#Filtering
+minFreq <- 4
+
+keepCols <- c(colSums(otu[,1:N] > 0) > minFreq, TRUE) #Makes sure the last value, SampleIDs is true
+
+otu <- otu[,c(keepCols)]
+
+#Reset N, in case we got rid of some columns
+N <- ncol(otu) - 1
+taxa <- names(otu)[1:N]
+#Define the  boxCoxNormalize Function
+boxCoxNormalize <- function(x){
+  if(length(x)<=1){
+    x;
+    }
+    else{
+        if(sum(x<=0)>0){
+            x=x-min(x)+0.0001;
+        }
+        p=powerTransform(x)[6]$start;
+        xnorm=(x^p -1)/p
+        xnorm
+    }
+}
+
+#Normalization makes our data fairly weird - let's save a back-up OTU table so we can use our real relative abundances later. We can save it with our metadata, so we can use it to plot later. 
+otu_backup <- merge(otu, metadata, by = "SampleID") 
+
+#Apply the function - one taxa at a time
+for (i in 1:N) {
+  x <- otu[,i]
+  x <- boxCoxNormalize(x)
+  otu[,i] <- x
+}
+```
+
+Now we have our OTU data set up as it needs to be. We can add in our metdata here, and make some p-value vectors. 
+
+```{r}
+combined_data <- merge(otu, metadata, by = "SampleID")
+p.sex <- vector()
+p.site <- vector()
+```
+
+##Running the ANOVA test
+
+Running ANOVA is basically the same, except now we iterate through columns instead of rows. We saved our taxa names earlier, so we can work with that. Note that you can do as many things as you want in one loop, instead of having a seperate for-loop each time you want to test a covariate. 
+
+```{r}
+for (i in 1:length(taxa)) {
+  y = combined_data[,taxa[i]] #grabs the first taxa
+  aovOutSex <- aov(y ~ combined_data$Sex)
+  aovOutSite <- aov(y ~ combined_data$BodySite)
+  p.sex[i] <- summary(aovOutSex)[[1]][1,5]
+  p.site[i] <- summary(aovOutSite)[[1]][1,5]
+}
+```
+
+Now we have p-values - we can correct them for multiple testing, and then look at which phyla (or whatever taxa you care about) have significant differences among groups.
+
+```{r}
+p.site <- p.adjust(p.site, "fdr")
+p.sex <- p.adjust(p.sex, "fdr")
+#How many significantly different phyla?
+sum(p.site < 0.05)
+sum(p.sex < 0.05)
+#Which ones?
+taxa[which(p.site < 0.05)]
+taxa[which(p.sex < 0.05)]
+```
+
+##Plotting
+
+At this point, we want to work with our back-up data to plot, rather than our normalized data. The normalized data will give really weird relative abundance values. 
+
+First, though, I also wrote a little function that generates pretty names based on the taxa labels given here - it might be useful in other code as well! For all taxa level, it grabs just the one requested; species grabs genus and species. Level can be a number (as above), or the name of the taxa level (in quotes) - the function checks for either. 
+
+```{r}
+prettyTaxaNames <- function(oldName, level, levelName = F, italicSpecies = F) {
+  names <- c("Kingdom", "Phylum","Class","Order","Family","Genus","Species")
+
+  pieces <- strsplit(oldName, "[.]")[[1]]
+  
+  if (!is.numeric(level)) {
+    level <- which(tolower(names) == tolower(level))
+    if (length(level) == 0) {
+      print("Bad taxa level.")
+      return
+      }
+    }
+  
+  if (length(pieces) < level) {
+    level <- length(pieces)
+    warning(sprintf("Current name is shorter than requested taxa level. Using %s instead.", names[level]))
+  }
+  
+  if (level == 7){
+    genusChunk <- pieces[6]
+    genus <- strsplit(genusChunk, "[_]")[[1]][3] 
+    speciesChunk <- pieces[7]
+    species <- strsplit(speciesChunk, "[_]")[[1]][3]    
+    newName <- paste(genus, tolower(species), sep = " ")
+    if (italicSpecies == T) {
+      newName <- italic(newName) #Will only show up in certain plotting situations
+      }
+    } else {
+    name_chunk <- pieces[level]
+    newName <- strsplit(name_chunk, "[_]")[[1]][3] 
+    }
+  
+  if (levelName == T) {
+    newName <- paste(names[level], newName, sep = ": ")
+  }
+  
+  return(newName)
+}
+```
+
+Ok, now to plotting. Let's just work with the phyla significantly different by sex. There's only one, though I'm going to treat this as a loop that you can use to make all of your plots. Remember we're using `otu_backup` to plot from! Here I'm specifically restricting myself to taxa with significant differences by sex, but you can plot whichever ones you want. 
+
+```{r}
+sigTaxa <- taxa[which(p.sex < 0.05)]
+
+for (i in 1:length(sigTaxa)) {
+  ggplot(otu_backup, aes(x = BodySite, y = otu_backup[,sigTaxa[i]], fill = Sex)) + geom_boxplot() + labs(title = prettyTaxaNames(sigTaxa[i], "phylum"), y = "Relative Abundance")
+  }
+```
+```{r, echo=FALSE}
+i = 1
+ggplot(otu_backup, aes(x = BodySite, y = otu_backup[,sigTaxa[i]], fill = Sex)) + geom_boxplot() + labs(title = prettyTaxaNames(sigTaxa[i], "phylum"), y = "Relative Abundance")
+```
+
+##Testing for interactions
+
+What if we're curious about the interaction between two variables? We can still use our data and the `aov` function, but the important things to look at will be a little bit different. Let's start with just p-values, though. We're back to our normalized data here. 
+
+```{r}
+p.interaction <- vector()
+
+for (i in 1:length(taxa)) {
+  y = combined_data[,taxa[i]] #grabs the first taxa
+  aovOut <- aov(y ~ combined_data$Sex*combined_data$BodySite)
+  p.interaction[i] <- summary(aovOut)[[1]][3,5] #Now we want the interaction term, not the first one
+}
+
+p.interaction <- p.adjust(p.interaction, "fdr")
+length(which(p.interaction < 0.05))
+
+taxa[which(p.interaction < 0.05)]
+```
+
+It turns out that none of the taxa here have significant interactions, but we want to look a little more closely at the ANOVA output to see what is going on. 
+
+```{r}
+aovOut <- aov(combined_data[,taxa[2]] ~ combined_data$Sex*combined_data$BodySite)
+taxa[2]
+summary(aovOut)
+```
+
+Here, for Bacteroidetes, there are significant differences in relative abundance by sex, and by body site, but the interaction between the two variables doesn't show significant differences. This means that, for example, the differences between males and females are the same whether you are looking at saliva or stool, even though males and females overall are different and saliva and stool overall are different. 
+
+It's important to think carefully about what your question is and what relationships you are interested in testing!
+

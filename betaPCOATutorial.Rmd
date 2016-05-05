@@ -1,0 +1,81 @@
+---
+title: "Beta Diversity PCOA"
+author: "Jennifer Teshera-Levye"
+date: "03/27/2016"
+output: html_document
+---
+
+
+Since the PCOA function/tutorial as-is has been giving people some trouble, here's an alternative. 
+
+Let's start with the packages we need to load: 
+
+```{r, message=FALSE}
+library(ape)
+library(vegan)
+library(ggplot2)
+```
+
+Next we need our data - a Unifrac distance table and a metadata/mapping file. This tutorial uses example files from Biol2002 Fall 2015, but should work with any data. We also store our column names as a seperate variable, to use later. We can look at the structure of the matrix we just made to make sure it seems correct. 
+
+```{r}
+beta <- as.matrix(read.table("TutorialDataFiles/unweighted_unifrac_dm.txt", sep = "\t", header=T, row.names = 1, as.is = T, check.names = F))
+IDs <- colnames(beta)
+
+str(beta)
+```
+
+Now we can use the function `pcoa()` from the R package `ape` to actually calculate our principle coordinate vectors. To make plotting easier, we save the vectors as a data frame, set up new column titles, and add a column of sample IDs. 
+
+```{r}
+PCOA <- data.frame(pcoa(beta)$vectors)
+
+new_names <- rep("", ncol(PCOA))
+for(i in 1:ncol(PCOA)) {new_names[i] <- paste("PC",i, sep="")}
+names(PCOA) <- new_names
+PCOA$SampleID <- IDs
+```
+
+Let's now stick our metadata in, so we can do some plotting. If you know which covariates you care about, you can pull those out seperately to have a smaller number of columns to work with. 
+
+```{r}
+metadata <- read.table("TutorialDataFiles/HMP_5BS_mapping.txt", header = T, sep = "\t", comment = "")
+if(names(metadata)[1] != "SampleID") {names(metadata)[1] <- "SampleID"}
+metadata <- metadata[,c("SampleID", "Sex", "BodySite", "Description")] #Optional
+metadata$SampleID <- as.character(metadata$SampleID) #if there's a chance your IDs are just numbers
+
+str(metadata)
+
+PCOA <- merge(PCOA, metadata, by = "SampleID")
+```
+
+Now you have a data frame that has all of your PCOA vectors and all the relevent metadata, matched up by sample ID. Now we can do some plotting. Let's work with the first two princpal coordinates. These should be pretty simple scatter plots, though there's other things we might do. 
+
+```{r}
+ggplot(PCOA, aes(x = PC1, y = PC2, color = BodySite)) + geom_point() + labs(title="Basic Scatter Plot")
+
+ggplot(PCOA, aes(x = PC1, y = PC2, color = BodySite, fill = Description)) + geom_point() + labs(title="Body Area Clusters?") + stat_ellipse(alpha = 0.3, geom="polygon", linetype="blank")
+```
+
+The following long command throws a whole pile of customization bells and whistles at ggplot - the fill colors are tweaked, the points are a bit bit bigger, the font sizes are bigger. This is just to give you a taste of all the different aesthetic options you can play around with. 
+
+```{r}
+ggplot(PCOA, aes(x = PC1, y = PC2, color = BodySite, fill = Description)) + 
+    stat_ellipse(alpha = 0.3, geom="polygon", linetype="blank") + 
+    geom_point(size = 3) + 
+    labs(title="Human Microbiome Betadiversity") + 
+    scale_color_discrete(name = "Body Site", 
+          labels = c("Mid-Vagina", "Saliva", "Stool","Subgingival Plaque")) + 
+    scale_fill_hue(h.start = 20,
+          name = "Body Area", 
+          labels = c("GI Tract", "Oral","Skin", "Urogenital Tract")) + 
+    theme(panel.background = element_rect(color = "grey97"), 
+          plot.title = element_text(size = 16), 
+          axis.title = element_text(size = 14), 
+          axis.text = element_text(size = 12),
+          legend.title = element_text(size = 14),
+          legend.text = element_text(size = 12)) + 
+    guides(color = guide_legend(override.aes = list(fill = "grey97", size = 4)), 
+           fill = guide_legend(override.aes=list(shape = NA)) )
+```
+

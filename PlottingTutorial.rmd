@@ -1,0 +1,351 @@
+---
+title: "Pretty Plotting for Biol 3004"
+author: "Jennifer Teshera-Levye"
+date: "04/06/2016"
+output: html_document
+---
+
+This tutorial will walk you through customizing plots, using both ggplot and base-R. I'll focus on a couple of basic types of plots and alterations you might find relevant. This tutorial is a bit long, but it's broken up into sections - feel free to jump around to the things you find most useful. 
+
+#Contents
+1. [Anatomy of a plot](#anatomy): What goes into a plot, anyway? 
+2. [Our dataset](#data): Poking at the `iris` dataset
+3. [Plotting in base-R](#base)
+    + [Scatterplots](#scatter): A basic scatter plot with bells and whistles. 
+    + [Boxplots](#box): Different plot function, same options. 
+    + [PCA plots](#pca): Putting together a more elaborate example. 
+4. [Plotting with ggplot2](#ggplot)
+    + [The Basics](#gbasic)
+    + Adding information - coming soon!
+    + Theming - coming soon! 
+5. [Supplement: Advice from R Users](#supp)
+  
+<a name="anatomy"></a>
+
+#Anatomy of plotting functions
+
+Before we jump into specifics, we should think about what makes up a plot, both in general and in R. All plots are a way of taking some data, and representing it graphically in 2D space, with a frame that gives some context. More specifically, we have: 
+
+1. Data
+2. Some number, usually 2 or 3, of axes, that represent the range of some dimension of the data. 
+3. A visual way of translating the data onto the axes. 
+4. The information you need (labels, colors, titles, keys) to understand what's going on. 
+
+Whether we are working in base-R or `ggplot`, a plot in R is basically a frame (your axes) on which you draw some stuff (points, lines, error bars, boxes, bars, legends, etc), and which have some number of features that you can customize. You can keep adding things until you make a new plot, layered over the features that were there before. There are a set of default options so that you can hit the ground with the most elements (the data), and there are lots of options to make everything look just like you want it. 
+
+The fundamental question when making a plot is "What in my data do I want to represent?" That's the question that lets you think about what should be on your x vs y axes, whether you want scatter plots or box plots or bar plots or histograms or whatever, what you want to color or label or highlight in some way. That's the core - everything else is just window dressing. 
+
+The window dressing is important, though, to make your plots both easy to understand and nice to look at. The second fundamental question you can ask is "What do I want my figures to look like?" If you make a plan for things like fonts and font sizes, colors, shapes, and positioning ahead of time, it will be easier set up your customization options as you go. 
+
+Before we jump into the examples in this tutorial, think about what plots you want to make for your project. Have some notes about key features you want to include, and then use the bits of this tutorial and other resources to pull them together. 
+
+<a name="data"></a>
+
+#The Data
+
+Rather than work with microbiome data, I'm using the `iris` dataset that comes packaged in R. Let's load it up and take a look at it, to think of some things that might be interesting to consider. 
+
+```{r}
+library(datasets)
+str(iris)
+```
+
+The data is straightforward enough - we have measurements of sepals and petals in three species of iris flower - from left to right, *Iris setosa*, *Iris versicolor*, and *Iris virginica*. 
+
+![setosa](Images/setosa.jpg) ![versicolor](Images/versicolor.jpg) ![virginica](Images/virginica.jpg)
+
+The `iris` dataset was used by R. A. Fisher, who was one of the key figures in early genetics research and in biological statistics in general. It was published in 1939, and is still frequently used today. You can read more about it on [Wikipedia](https://en.wikipedia.org/wiki/Iris_flower_data_set)
+
+Let's look at some simple descriptive statistics - here are the means and standard deviations of the petal traits, by species.  
+
+```{r}
+library(plyr)
+petals <- ddply(iris, .(Species), summarize, 
+                    PetalLengthMean = mean(Petal.Length),
+                    PetalLengthSD = sd(Petal.Length),
+                    PetalWidthMean = mean(Petal.Width),
+                    PetalWidthSD = sd(Petal.Width))
+petals
+```
+
+Let's look at the correlations between the various traits in this data set - maybe there will be something interesting to plot!
+
+```{r}
+cors <- round(cor(iris[ 1:4]), digits = 3)
+cors[lower.tri(cors)] <- "-"
+noquote(cors)
+```
+
+Looks like it might be interesting to look at either petal length vs width, or sepal vs either petal dimension. 
+
+Let's also calculate principal components analysis vectors we can plot. This is the most basic way of doing things - we're going to ignore various centering and manipulation steps we could do, because this is a lesson in plotting, not in statistics. 
+
+```{r}
+pca.iris <- princomp(iris[,1:4])
+```
+
+<a name="base"></a>
+
+#Plotting in Base-R 
+
+Let's plot three things in base R - a simple scatter plot with a line of best fit, showing the relationship between petal width and length, a box plot of the sepal lengths by species, and a basic principal components plot. 
+
+<a name="scatter"></a>
+
+##Scatter plots
+
+Let's start with the absolute most simple - a no-frills scatter plot. All we need is our plotting function (`plot()`), a data set (`iris`), and a relationship, in the format `y ~ x`, to plot.  
+
+```{r}
+plot(Petal.Length ~ Petal.Width, data = iris)
+```
+
+Easy, but ugly. We can do some simple things, like change the shape (`pch`), color (`col`), and size (`cex`) of the points. Quick reference for the shape options: 
+
+![pch](Images/points.png)
+
+[This pdf](http://www.stat.columbia.edu/~tzheng/files/Rcolor.pdf) has a full list of named colors in R; you can also reference anything by hexadecimal code. 
+
+Let's also add titles and axis labels. 
+
+```{r}
+plot(Petal.Length ~ Petal.Width, data = iris, 
+     pch = 16, 
+     col = "violetred4", 
+     cex = 1.5,
+     main = "Iris petal length vs width",
+     xlab = "Petal width (cm)",
+     ylab = "Petal length (cm)")
+```
+
+We can also add a line of best fit, using linear regression and the function `abline()` and customize it with different line type (`lty`), width (`lwd`), and color (`col`). We can also make our text size bigger - for example, if you're exporting a figure for a poster. We can set `ps`, the point size, to be 18. Let's also make it a Serif font. 
+
+```{r}
+plot(Petal.Length ~ Petal.Width, data = iris, 
+     pch = 16, 
+     col = "violetred4", 
+     cex = 1.5,
+     main = "Iris petal length vs width",
+     xlab = "Petal width (cm)",
+     ylab = "Petal length (cm)",
+     ps = 18,
+     family = "serif")
+
+abline(lm(Petal.Length ~ Petal.Width, data = iris),
+       lty = 2,
+       lwd = 3,
+       col = "slateblue4")
+```
+
+What if we want to color code by species and add a legend?
+
+```{r}
+plot(Petal.Length ~ Petal.Width, data = iris, 
+     pch = 16, 
+     col = Species, 
+     cex = 1.5,
+     main = "Iris petal length vs width",
+     xlab = "Petal width (cm)",
+     ylab = "Petal length (cm)",
+     ps = 18)
+
+legend("topleft", legend=levels(iris$Species), col = c(1:3), pch = 16)
+```
+
+Easy enough, though these colors are somewhat ugly, but we can change them. All you really need to do to change a color palette in R is give the function `palette()` a list of colors, then you can reference them by number in any of your plots. Designing color palettes that look nice can be tricky, though. 
+
+Let's have some fun - Wes Anderson movies have cool color palettes. Based on the info from [this Tumblr](http://wesandersonpalettes.tumblr.com/), developers Karthik Ram, Hadley Wickham, and Clark Richards put together an R package, `wesanderson`, that makes some very lovely palettes. After you install it, (using `install.packages("wesanderson")` ), we can poke around a little, and then re-make our plot with prettier colors. 
+
+```{r}
+library(wesanderson)
+wes_palette("Zissou")
+palette(wes_palette("GrandBudapest",3))
+
+plot(Petal.Length ~ Petal.Width, data = iris, 
+     pch = 16, 
+     col = Species, 
+     cex = 1.5,
+     main = "Iris petal length vs width",
+     xlab = "Petal width (cm)",
+     ylab = "Petal length (cm)",
+     ps = 18)
+
+legend("topleft", legend=levels(iris$Species), col = c(1:3), pch = 16)
+```
+
+The package `colorbrewer2` and it's corresponding [website](www.colorbrewer2.org) can give you another set of options for desinging all kinds of nice color palettes for plots. 
+
+<a name="box"></a>
+
+##Box plots
+All of the plotting options we used here also apply for box plots. Here's a very generic box plot: 
+
+```{r}
+boxplot(Sepal.Length ~ Species, data = iris)
+```
+
+Let's make a couple of changes: add axes labels and a title, add significance labels, and add some color. First we want to double check that all our pairwise differences are significant. There's a nice package called `lsmeans` that will do pairwise t-tests and correct p-values for multiple testing - here's how it works. 
+
+```{r}
+library(lsmeans)
+means <- lsmeans(lm(Sepal.Length ~ Species, data = iris), specs = "Species")
+contrast(means, method = "pairwise")
+```
+
+All the differences are significant, which we probably assumed, bu tit's good to check. 
+
+Now let's make and annotate our new plot: 
+
+```{r}
+#Here's a palette with the colors roughly matched with the the iris images above. 
+palette(c("#B2A2E0", "#4D20AF", "#9D91E7"))
+boxplot(Sepal.Length ~ Species, data = iris,
+        col = c(1:3),
+        notch = T,
+        xlab = "Species",
+        ylab = "Sepal Length (cm)",
+        ylim = c(4,8.3),
+        xaxt="n")
+axis(1, 1:3, labels = c("I. setosa", "I. versicolor", "I. virginica"), font = 3)
+text(c(6,7.3,8.1), "*", cex=2)
+```
+
+You can adjust the margins/layout/etc with more fine control using the command `par()`, where you can set all your graphics options at once. Here's a [thorough tutorial](http://research.stowers-institute.org/efg/R/Graphics/Basics/mar-oma/index.htm) on base-R graph layout. 
+
+
+<a name="pca"></a>
+
+##PCA Plots
+
+We have a data object, `pca.iris`, that has a bunch of information about the principal components. There's a function called `biplot()` that can take this object and make a rather ugly plot of the data: 
+
+```{r}
+palette("default")
+biplot(pca.iris)
+```
+
+We can definitely do better. Let's plot the first and second principal component, color-code by species, and add the vectors that represent each variable. Let's set up our data: 
+
+```{r}
+PC1 <- pca.iris$scores[,1]
+PC2 <- pca.iris$scores[,2]
+Species <- iris$Species
+
+pVar <- pca.iris$sdev^2/sum(pca.iris$sdev^2) * 100
+
+loadingPC1 <- pca.iris$loadings[,1]
+loadingPC2 <- pca.iris$loadings[,2]
+origin <- c(0,0,0,0)
+
+palette(wes_palette("Moonrise1"))
+plot(PC1, PC2, 
+     col = Species,
+     pch = 16,
+     main = "Iris PCA Plot",
+     xlab = sprintf("PC1, %.2f %% of variance", pVar[1]),
+     ylab = sprintf("PC2, %.2f %% of variance", pVar[2]))
+abline(h = 0, lty = 3)
+abline(v = 0, lty = 3)
+legend("topright", col = c(1:3), legend = levels(Species), pch = 16, cex = 0.7)
+arrows(origin, origin, loadingPC1, loadingPC2, lwd = 2)
+
+labelX <- c(0.5, -0.6, 0.7, 1)
+labelY <- c(-0.7, -0.78, 0.4, 0)
+text(labelX, labelY, names(loadingPC1), cex = 0.7)
+```
+
+One alternative, for the sake of the plot not being absurdly busy - let's swap out the variable vectors with elipses around the species. We can use a function in the `car` package to do this. 
+
+```{r}
+library(car)
+palette(wes_palette("Moonrise1"))
+plot(PC1, PC2, 
+     col = Species,
+     pch = 16,
+     main = "Iris PCA Plot",
+     xlab = sprintf("PC1, %.2f %% of variance", pVar[1]),
+     ylab = sprintf("PC2, %.2f %% of variance", pVar[2]))
+abline(h = 0, lty = 3)
+abline(v = 0, lty = 3)
+legend("topright", col = c(1:3), legend = levels(Species), pch = 16, cex = 0.7)
+
+dataEllipse(PC1, PC2, groups = Species, add = T, group.labels = NULL)
+```
+
+<a name="ggplot"></a>
+
+#Plotting with ggplot2
+
+Working in base-R isn't bad - you can produce some very lovely graphs, and it's very customizable. I happen to think there's a better way, and that way is `ggplot2`. 
+
+As with base-R, there are way more plotting and customizing options than I can cover here. Luckily, there are a lot of resources to get help. If you just need a quick reference, RStudio's developer has an awesome [ggplot cheatsheet](https://www.rstudio.com/wp-content/uploads/2015/03/ggplot2-cheatsheet.pdf). For the most complete reference, there's the [official documentation](http://docs.ggplot2.org/current/). There's a couple of books, *The R Graphics Cookbook* by Winston Chang being the gold standard, that can be a big help. 
+
+Knowing that there are tons of references for extending, let's walk through the basics. 
+
+<a name="gbasic"></a>
+
+##Exploring basic plots
+
+```{r, echo=FALSE}
+college <- read.csv("~/Downloads/CollegeScoreCardReduced.csv")
+```
+
+Let's play around with a new dataset. There are thousands of openly available data sets around for playing with. After poking around some, I downloaded the [US College Scorecard](https://collegescorecard.ed.gov/data/) put out by the DOE. It's a pretty massive data set, so I did some processing not included in this tutorial - my version of the dataset and the code used to produce it are available on GitHub. I filtered it down to 26 variables - we won't use all of them, but feel free to play around with it. 
+
+The core of a plot in `ggplot2` is basically the same as in base R, though the set-up is quite different. For a simple scatterplot, we need two things: some data and a *geometry*, which is just the fancy word for "kind of plot to make." 
+
+Here's a couple of plots that are just made up of data and a geometry - no colors, no groupings, no titles or description. Just plain plots. 
+
+```{r, message=F}
+library(ggplot2)
+ggplot(college, aes(x = AvgCostYear, y = FacultySalary)) + geom_point()
+ggplot(college, aes(x = Ownership, y = AvgCostYear)) + geom_boxplot()
+ggplot(college, aes(x = State)) + geom_bar()
+ggplot(college, aes(x = Debt)) + geom_histogram()
+```
+
+Well, those aren't very exciting, are they. Let's add two more simple additions - coloring by some kind of group, and some titles. Let's take that last plot, and see if the distributions of student debt are different at men's, women's, or coed colleges. 
+
+The trick with ggplot and coloring by grouping is knowing if you want to set the `fill` or the `color`. `color` is for single points, lines, and outlines. `fill` is for, well, anything that gets filled in - bars, boxes, distributions, etc. So for a histogram, we want to set our `fill` equal to the category we care about. For now, we're using the default ggplot colors. We also want to change one of the options in our geometry. 
+
+```{r, message=F}
+ggplot(college, aes(x = Debt, fill = Gender)) + geom_histogram() + labs(main = "Student Debt", x = "Median Debt")
+```
+
+Co-ed schools kind of dominate this plot, don't they? We can use a subset of our data to get a closer look. 
+
+```{r, message=FALSE}
+ggplot(subset(college, college$Gender != "Coed"), aes(x = Debt, fill = Gender)) + geom_histogram() + labs(title = "Student Debt (DOE College Scorecard)", x = "Median Debt", y = "No. Universities")
+```
+
+One not-quite-so-intuitive aspect of ggplot is how you control keys to various color/shape/etc codings. You can get pretty fine control over all the ways your data is colored and grouped - the level of control that's available means that there are probably a lot of options you don't need. When thinking about legends, we'll probably be focusing on two kinds - fill and color. For each, there are two subtypes we might be thinking about - discrete, for categorical variables, and continuous, for numerical ones. 
+
+For our little histogram, we're using the "fill" option, and we have a discrete scale, so we want to change options in `scale_fill_discrete`. Let's change the title and the label names to be something a little more discriptive: 
+
+```{r, message=FALSE}
+ggplot(subset(college, college$Gender != "Coed"), aes(x = Debt, fill = Gender)) + geom_histogram() + labs(title = "Student Debt (DOE College Scorecard)", x = "Median Debt", y = "No. Universities") + scale_fill_discrete(name="Single Gender Colleges", labels=c("Men only","Women Only"))
+```
+
+There are a handful of other options to play with - the R Cookbook has a [nice guide](http://www.cookbook-r.com/Graphs/Legends_(ggplot2)/) for all of them. 
+
+##Themes - Coming soon!
+Information about more ways to group and categorize data and advice on customizing themes. For some info on themes now, check out either this extensive [tutorial](http://docs.ggplot2.org/dev/vignettes/themes.html) from the ggplot developers. 
+
+<a names="supp"></a>
+
+#Supplement: Tips and Tricks from R Users
+
+I sent an email out to the R user list in my department, asking if anyone had any advice to share. The following are the responses I got. 
+
+**Regression Plot Template** from George Furey
+"Here is my basic regression template: 
+
+Fill in values for x and y with a lm regression at m1. This gives a graph with the r2 and equation on the graph plus the line."
+```{r, eval=FALSE}
+ggplot(data, aes(x=,y=))+geom_point() + 
+    geom_abline(intercept=as.numeric(m1$coefficients[1]), slope=as.numeric(m1$coefficients[2])) +
+    theme_bw(base_size = 35)+ylab(expression(paste("y units"," ","g","m"^2))) +
+    xlab(expression(paste("x units"," ","g","m"^2))) +
+    annotate("text", x = , y = , size=8, label = paste("y =",round(m1$coefficients[1],3),"+","x*",round(m1$coefficients[2],3))) +
+    annotate("text", x = , y = , size=8,label = paste("R^2==",round(summary(m1)$r.squared,3)), parse=TRUE)
+```
